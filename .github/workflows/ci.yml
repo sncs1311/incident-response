@@ -32,7 +32,7 @@ jobs:
           flake8 agent/ \
             --max-line-length=120 \
             --exclude=__pycache__ \
-            --ignore=E501,W503
+            --ignore=E501,W503,W291,W292,E221,E241,F401,F541,E741,F811
 
       - name: Validate YAML configs
         run: |

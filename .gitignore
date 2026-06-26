@@ -1,0 +1,19 @@
+# Data
+data/
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+# Docker volumes (local)
+loki_data/
+prometheus_data/
+grafana_data/
+
+# OS
+.DS_Store

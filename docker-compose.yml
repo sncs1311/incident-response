@@ -1,0 +1,179 @@
+version: "3.8"
+
+# ============================================================
+# Automated Incident Response System — Full Stack
+# Phase 1: Foundation (log + metrics collection)
+# ============================================================
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  loki_data: {}
+  prometheus_data: {}
+  grafana_data: {}
+
+services:
+
+  # ── Monitored Services (things that will break) ──────────
+
+  api-service:
+    build: ./services/api-service
+    container_name: api-service
+    networks: [monitoring]
+    ports:
+      - "8000:8000"
+    labels:
+      - "logging=promtail"           # Promtail uses this label to collect logs
+      - "service=api-service"
+    environment:
+      - CRASH_RATE=0.1               # 10% of requests will fail (for demo)
+    restart: unless-stopped
+    logging:
+      driver: json-file              # Docker's default — Promtail can read this
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker-service:
+    build: ./services/worker-service
+    container_name: worker-service
+    networks: [monitoring]
+    labels:
+      - "logging=promtail"
+      - "service=worker-service"
+    environment:
+      - FAIL_EVERY_N_JOBS=5          # Fail every 5th job to simulate errors
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Log Aggregation ───────────────────────────────────────
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: loki
+    networks: [monitoring]
+    ports:
+      - "3100:3100"                  # Loki API (agent will query this)
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: promtail
+    networks: [monitoring]
+    volumes:
+      - ./monitoring/loki/promtail-config.yml:/etc/promtail/config.yml
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro  # Read Docker logs
+      - /var/run/docker.sock:/var/run/docker.sock                  # Docker socket for labels
+    command: -config.file=/etc/promtail/config.yml
+    restart: unless-stopped
+
+  # ── Metrics ──────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: prometheus
+    networks: [monitoring]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    restart: unless-stopped
+
+  # Exports Docker container metrics to Prometheus
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    networks: [monitoring]
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    networks: [monitoring]
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+    restart: unless-stopped
+
+  # ── Visualisation ─────────────────────────────────────────
+
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: grafana
+    networks: [monitoring]
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+
+  # ── Incident Response Agent ───────────────────────────────
+  # (Phases 2-4 will fill this in — skeleton only for now)
+  agent:
+    build: ./agent
+    container_name: incident-agent
+    networks: [monitoring]
+    volumes:
+      - ./agent:/app
+      - /var/run/docker.sock:/var/run/docker.sock  # Phase 3: needed for restarts
+      - ./data:/app/data                            # SQLite lives here
+    environment:
+      - LOKI_URL=http://loki:3100
+      - PROMETHEUS_URL=http://prometheus:9090
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama3
+      - OLLAMA_TIMEOUT=120
+      - POLL_INTERVAL=30
+      - ERROR_THRESHOLD=5
+      - AUTO_REMEDIATE=true
+      # ── Phase 4: Notifications ──────────────────────────
+      # Slack: create a webhook at https://api.slack.com/apps
+      - SLACK_WEBHOOK_URL=
+      - GRAFANA_URL=http://localhost:3000
+      # Email (Gmail example — use an App Password, not your real password)
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=
+      - SMTP_PASSWORD=
+      - ALERT_FROM=
+      - ALERT_TO=
+      # GitHub Issues (optional — paste a personal access token)
+      - GITHUB_TOKEN=
+      - GITHUB_REPO=
+    restart: unless-stopped
+    depends_on:
+      - loki
+      - prometheus

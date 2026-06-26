@@ -1,0 +1,56 @@
+# monitoring/prometheus/alert_rules.yml
+# These rules are evaluated every 15s. When a condition is true
+# for longer than 'for' duration, it fires an alert.
+# Phase 3 will wire these to the remediation engine.
+
+groups:
+  - name: service_health
+    rules:
+
+      # Container is down (no metrics received in last 30s)
+      - alert: ServiceDown
+        expr: absent(container_last_seen{name=~"api-service|worker-service"}) or
+              (time() - container_last_seen{name=~"api-service|worker-service"}) > 30
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.name }} is down"
+          description: "Container {{ $labels.name }} has not been seen for over 1 minute"
+
+      # High CPU on a container (>80% for 2 min)
+      - alert: HighCPU
+        expr: rate(container_cpu_usage_seconds_total{name=~"api-service|worker-service"}[2m]) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} CPU above 80% for 2 minutes"
+
+      # High memory (>85% of limit)
+      - alert: HighMemory
+        expr: (container_memory_usage_bytes{name=~"api-service|worker-service"} /
+               container_spec_memory_limit_bytes{name=~"api-service|worker-service"}) * 100 > 85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} memory above 85% of limit"
+
+  - name: host_health
+    rules:
+
+      # Disk >85% full — Phase 3 auto-remediates this
+      - alert: DiskAlmostFull
+        expr: (node_filesystem_size_bytes{mountpoint="/"} - node_filesystem_free_bytes{mountpoint="/"})
+              / node_filesystem_size_bytes{mountpoint="/"} * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          auto_remediate: "true"       # Flag for our agent to attempt auto-fix
+          remediation: "clear_disk"
+        annotations:
+          summary: "Disk usage above 85%"
+          description: "Root filesystem is {{ $value }}% full"

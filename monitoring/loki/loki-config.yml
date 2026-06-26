@@ -1,0 +1,44 @@
+# monitoring/loki/loki-config.yml
+# Loki is a log aggregation system by Grafana Labs.
+# Think of it as "Prometheus but for logs" — it stores log streams
+# indexed by labels (service name, level, host) not by content.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+limits_config:
+  # How far back you can query. Increase if you want more history.
+  max_query_lookback: 168h      # 7 days
+  # Max number of log lines returned per query
+  max_entries_limit_per_query: 5000
+  # Rate limit on ingestion (logs per second per stream)
+  ingestion_rate_mb: 8
+  ingestion_burst_size_mb: 16

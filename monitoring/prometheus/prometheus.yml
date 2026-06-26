@@ -1,0 +1,46 @@
+# monitoring/prometheus/prometheus.yml
+# Prometheus scrapes metrics from HTTP endpoints (/metrics)
+# on a schedule (every 15s here) and stores them as time-series data.
+# Each metric has a name, value, timestamp, and labels (key-value tags).
+
+global:
+  scrape_interval: 15s          # How often to collect metrics
+  evaluation_interval: 15s      # How often to evaluate alert rules
+  scrape_timeout: 10s
+
+# Alert rules live here — we'll add them in Phase 3
+rule_files:
+  - "alert_rules.yml"
+
+scrape_configs:
+  # ── Prometheus itself ─────────────────────────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ── Host machine metrics (CPU, RAM, disk, network) ────────
+  - job_name: "node"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # ── Docker container metrics (per-container CPU, mem) ─────
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    metric_relabel_configs:
+      # Only keep metrics we care about — reduces storage massively
+      - source_labels: [__name__]
+        regex: "container_(cpu_usage_seconds_total|memory_usage_bytes|fs_usage_bytes|network_receive_bytes_total|network_transmit_bytes_total|last_seen)"
+        action: keep
+
+  # ── Our API service (if it exports /metrics) ──────────────
+  - job_name: "api-service"
+    static_configs:
+      - targets: ["api-service:8000"]
+    metrics_path: /metrics
+
+  # ── Loki internals ────────────────────────────────────────
+  - job_name: "loki"
+    static_configs:
+      - targets: ["loki:3100"]
+    metrics_path: /metrics

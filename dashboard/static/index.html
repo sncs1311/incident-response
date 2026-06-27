@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Incident Response — Command Center</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0a0f;
+    --surface:  #111118;
+    --border:   #1e1e2e;
+    --border2:  #2a2a3e;
+    --text:     #e2e2f0;
+    --muted:    #6b6b8a;
+    --green:    #22d3a5;
+    --red:      #f05f7a;
+    --yellow:   #f5c542;
+    --blue:     #6e8efb;
+    --purple:   #a78bfa;
+    --glow-g:   rgba(34,211,165,0.15);
+    --glow-r:   rgba(240,95,122,0.15);
+    --font:     'Inter', sans-serif;
+    --mono:     'JetBrains Mono', monospace;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; }
+
+  /* ── Layout ── */
+  .layout { display: grid; grid-template-rows: 56px 1fr; height: 100vh; overflow: hidden; }
+  .main { display: grid; grid-template-columns: 260px 1fr 340px; overflow: hidden; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; border-bottom: 1px solid var(--border);
+    background: rgba(10,10,15,0.95); backdrop-filter: blur(8px);
+    position: relative; z-index: 10;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .logo-text { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text); }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .clock { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .badge-live {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    padding: 3px 8px; border-radius: 4px;
+    background: rgba(34,211,165,0.1); color: var(--green);
+    border: 1px solid rgba(34,211,165,0.25); text-transform: uppercase;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar { border-right: 1px solid var(--border); overflow-y: auto; padding: 16px 0; }
+  .sidebar-section { padding: 0 16px 16px; }
+  .sidebar-label { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+
+  /* Service cards */
+  .service-card {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-radius: 8px; margin-bottom: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    transition: border-color 0.2s;
+  }
+  .service-card.up { border-color: rgba(34,211,165,0.2); }
+  .service-card.down { border-color: rgba(240,95,122,0.3); background: rgba(240,95,122,0.05); }
+  .service-name { font-size: 12px; font-weight: 500; }
+  .service-status {
+    font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px;
+    font-family: var(--mono);
+  }
+  .service-status.up { background: rgba(34,211,165,0.1); color: var(--green); }
+  .service-status.down { background: rgba(240,95,122,0.1); color: var(--red); }
+
+  /* Stats row */
+  .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .stat-card {
+    padding: 10px 12px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .stat-value { font-size: 20px; font-weight: 700; font-family: var(--mono); margin-bottom: 2px; }
+  .stat-label { font-size: 10px; color: var(--muted); }
+  .stat-card.alert .stat-value { color: var(--red); }
+  .stat-card.ok .stat-value { color: var(--green); }
+
+  /* ── Center ── */
+  .center { overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+  /* Simulator */
+  .simulator {
+    border-radius: 12px; border: 1px solid var(--border2);
+    background: var(--surface); overflow: hidden;
+  }
+  .sim-header {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sim-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .sim-body { padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .sim-btn {
+    padding: 20px; border-radius: 10px; border: 1px solid;
+    cursor: pointer; text-align: left; transition: all 0.2s;
+    background: transparent; color: var(--text); font-family: var(--font);
+  }
+  .sim-btn:hover { transform: translateY(-1px); }
+  .sim-btn:active { transform: translateY(0); }
+  .sim-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .sim-btn.healing {
+    border-color: rgba(34,211,165,0.3);
+    background: linear-gradient(135deg, rgba(34,211,165,0.05) 0%, transparent 100%);
+  }
+  .sim-btn.healing:hover { border-color: var(--green); background: rgba(34,211,165,0.08); box-shadow: 0 0 20px rgba(34,211,165,0.1); }
+
+  .sim-btn.breaking {
+    border-color: rgba(240,95,122,0.3);
+    background: linear-gradient(135deg, rgba(240,95,122,0.05) 0%, transparent 100%);
+  }
+  .sim-btn.breaking:hover { border-color: var(--red); background: rgba(240,95,122,0.08); box-shadow: 0 0 20px rgba(240,95,122,0.1); }
+
+  .btn-icon { font-size: 24px; margin-bottom: 10px; display: block; }
+  .btn-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .btn-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  .sim-output {
+    margin: 0 20px 20px; padding: 12px 14px; border-radius: 8px;
+    background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    min-height: 36px; display: none;
+  }
+  .sim-output.visible { display: block; }
+  .sim-output.success { border-color: rgba(34,211,165,0.3); color: var(--green); }
+  .sim-output.error { border-color: rgba(240,95,122,0.3); color: var(--red); }
+
+  /* Log stream */
+  .log-panel {
+    border-radius: 12px; border: 1px solid var(--border2);
+    background: var(--surface); flex: 1; min-height: 300px; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .panel-header {
+    padding: 12px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .panel-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .panel-actions { display: flex; gap: 8px; }
+  .level-btn {
+    font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 4px;
+    border: 1px solid var(--border); background: transparent; color: var(--muted);
+    cursor: pointer; font-family: var(--font); transition: all 0.15s;
+  }
+  .level-btn.active-error { background: rgba(240,95,122,0.1); color: var(--red); border-color: rgba(240,95,122,0.3); }
+  .level-btn.active-warn { background: rgba(245,197,66,0.1); color: var(--yellow); border-color: rgba(245,197,66,0.3); }
+  .level-btn.active-info { background: rgba(110,142,251,0.1); color: var(--blue); border-color: rgba(110,142,251,0.3); }
+
+  .log-stream { flex: 1; overflow-y: auto; padding: 12px 16px; font-family: var(--mono); font-size: 11px; line-height: 1.7; }
+  .log-line { display: flex; gap: 12px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.02); }
+  .log-time { color: var(--muted); flex-shrink: 0; }
+  .log-svc { color: var(--blue); flex-shrink: 0; min-width: 90px; }
+  .log-lvl { flex-shrink: 0; min-width: 50px; font-weight: 600; }
+  .log-lvl.ERROR { color: var(--red); }
+  .log-lvl.WARNING { color: var(--yellow); }
+  .log-lvl.INFO { color: var(--green); }
+  .log-msg { color: var(--text); opacity: 0.8; }
+  .empty-state { text-align: center; color: var(--muted); padding: 40px; font-size: 12px; }
+
+  /* ── Right panel ── */
+  .right-panel { border-left: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+
+  /* Alert banner */
+  .alert-banner {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(240,95,122,0.05);
+  }
+  .alert-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); flex-shrink: 0; animation: pulse 1s ease-in-out infinite; }
+  .alert-text { font-size: 12px; font-weight: 500; color: var(--red); }
+  .alert-count { font-family: var(--mono); font-weight: 700; }
+
+  /* Incident feed */
+  .incident-feed { flex: 1; overflow-y: auto; }
+  .feed-header { padding: 14px 16px 10px; }
+  .incident-card {
+    margin: 0 12px 8px; padding: 12px 14px; border-radius: 8px;
+    background: var(--bg); border: 1px solid var(--border);
+    transition: border-color 0.2s;
+  }
+  .incident-card:hover { border-color: var(--border2); }
+  .incident-card.remediated { border-left: 2px solid var(--green); }
+  .incident-card.escalated { border-left: 2px solid var(--red); }
+  .incident-card.open { border-left: 2px solid var(--yellow); }
+
+  .inc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .inc-svc { font-size: 11px; font-weight: 600; font-family: var(--mono); color: var(--blue); }
+  .inc-status {
+    font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .inc-status.remediated { background: rgba(34,211,165,0.1); color: var(--green); }
+  .inc-status.escalated { background: rgba(240,95,122,0.1); color: var(--red); }
+  .inc-status.open { background: rgba(245,197,66,0.1); color: var(--yellow); }
+
+  .inc-title { font-size: 12px; color: var(--text); margin-bottom: 6px; line-height: 1.4; }
+  .inc-diagnosis {
+    font-size: 11px; color: var(--muted); line-height: 1.5;
+    background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px;
+    margin-bottom: 6px; display: none;
+  }
+  .inc-diagnosis.visible { display: block; }
+  .inc-footer { display: flex; align-items: center; justify-content: space-between; }
+  .inc-time { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+  .inc-toggle { font-size: 10px; color: var(--muted); cursor: pointer; background: none; border: none; color: var(--blue); }
+  .inc-toggle:hover { text-decoration: underline; }
+
+  /* CPU bar */
+  .cpu-bars { padding: 0 16px 16px; }
+  .cpu-row { margin-bottom: 10px; }
+  .cpu-label { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .cpu-name { font-size: 11px; color: var(--muted); }
+  .cpu-val { font-size: 11px; font-family: var(--mono); color: var(--text); }
+  .cpu-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .cpu-fill { height: 100%; border-radius: 2px; background: var(--green); transition: width 1s ease; }
+  .cpu-fill.warn { background: var(--yellow); }
+  .cpu-fill.crit { background: var(--red); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* Spinner */
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <span class="logo-text">Incident Response — Command Center</span>
+    </div>
+    <div class="header-right">
+      <span class="clock" id="clock">--:--:--</span>
+      <span class="badge-live">Live</span>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Services</div>
+        <div id="services-list"><div class="empty-state">Loading...</div></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">System</div>
+        <div class="stat-row">
+          <div class="stat-card" id="stat-incidents">
+            <div class="stat-value" id="val-total">—</div>
+            <div class="stat-label">Total incidents</div>
+          </div>
+          <div class="stat-card ok" id="stat-remediated">
+            <div class="stat-value" id="val-remediated">—</div>
+            <div class="stat-label">Auto-fixed</div>
+          </div>
+          <div class="stat-card alert" id="stat-escalated">
+            <div class="stat-value" id="val-escalated">—</div>
+            <div class="stat-label">Escalated</div>
+          </div>
+          <div class="stat-card" id="stat-alerts">
+            <div class="stat-value" id="val-alerts">—</div>
+            <div class="stat-label">Firing alerts</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">CPU Usage</div>
+        <div class="cpu-bars" id="cpu-bars"><div class="empty-state" style="padding:8px">Loading...</div></div>
+      </div>
+    </aside>
+
+    <!-- Center -->
+    <main class="center">
+
+      <!-- Simulator -->
+      <div class="simulator">
+        <div class="sim-header">
+          <span class="sim-title">Incident Simulator</span>
+          <span style="font-size:11px;color:var(--muted)">Trigger real incidents — watch the system respond</span>
+        </div>
+        <div class="sim-body">
+          <button class="sim-btn healing" onclick="simulate('self_healing')" id="btn-healing">
+            <span class="btn-icon">⚡</span>
+            <div class="btn-title">Self-Healing Incident</div>
+            <div class="btn-desc">Stops worker-service. Agent detects ServiceDown, restarts it automatically. Watch the status flip back to UP.</div>
+          </button>
+          <button class="sim-btn breaking" onclick="simulate('non_healing')" id="btn-breaking">
+            <span class="btn-icon">🔥</span>
+            <div class="btn-title">Non-Healing Incident</div>
+            <div class="btn-desc">Floods API with errors. No playbook matches — agent escalates to human. Check the incident feed below.</div>
+          </button>
+        </div>
+        <div class="sim-output" id="sim-output"></div>
+      </div>
+
+      <!-- Log stream -->
+      <div class="log-panel">
+        <div class="panel-header">
+          <span class="panel-title">Live Log Stream</span>
+          <div class="panel-actions">
+            <button class="level-btn active-error" onclick="setLevel('ERROR', this)">ERROR</button>
+            <button class="level-btn" onclick="setLevel('WARNING', this)">WARN</button>
+            <button class="level-btn" onclick="setLevel('INFO', this)">INFO</button>
+          </div>
+        </div>
+        <div class="log-stream" id="log-stream">
+          <div class="empty-state">Waiting for logs...</div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Right panel -->
+    <aside class="right-panel">
+      <div class="alert-banner" id="alert-banner" style="display:none">
+        <div class="alert-dot"></div>
+        <span class="alert-text"><span class="alert-count" id="alert-count">0</span> alert(s) firing</span>
+      </div>
+
+      <div class="feed-header">
+        <div class="sidebar-label">Incident Feed</div>
+      </div>
+      <div class="incident-feed" id="incident-feed">
+        <div class="empty-state">No incidents yet.<br>Use the simulator to trigger one.</div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<script>
+const API = '';
+let currentLevel = 'ERROR';
+let lastLogTs = 0;
+
+// ── Clock ───────────────────────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US', {hour12: false});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Fetch helpers ────────────────────────────────────────────────────────────
+async function get(path) {
+  const r = await fetch(API + path);
+  return r.json();
+}
+
+async function post(path, body) {
+  const r = await fetch(API + path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+// ── Services ────────────────────────────────────────────────────────────────
+async function refreshServices() {
+  const data = await get('/api/services');
+  const el = document.getElementById('services-list');
+  if (!data.services?.length) {
+    el.innerHTML = '<div class="empty-state">No services found</div>';
+    return;
+  }
+  el.innerHTML = data.services.map(s => `
+    <div class="service-card ${s.status}">
+      <span class="service-name">${s.name}</span>
+      <span class="service-status ${s.status}">${s.status.toUpperCase()}</span>
+    </div>
+  `).join('');
+}
+
+// ── Alerts ──────────────────────────────────────────────────────────────────
+async function refreshAlerts() {
+  const data = await get('/api/alerts');
+  const count = data.count || 0;
+  document.getElementById('val-alerts').textContent = count;
+  document.getElementById('stat-alerts').className = `stat-card ${count > 0 ? 'alert' : 'ok'}`;
+  const banner = document.getElementById('alert-banner');
+  if (count > 0) {
+    banner.style.display = 'flex';
+    document.getElementById('alert-count').textContent = count;
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+// ── Metrics / CPU ────────────────────────────────────────────────────────────
+async function refreshMetrics() {
+  const data = await get('/api/metrics');
+  const el = document.getElementById('cpu-bars');
+  if (!data.cpu?.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:8px;font-size:11px">No CPU data yet</div>';
+    return;
+  }
+  el.innerHTML = data.cpu.map(c => {
+    const pct = Math.min(c.value, 100).toFixed(3);
+    const cls = c.value > 80 ? 'crit' : c.value > 50 ? 'warn' : '';
+    return `
+      <div class="cpu-row">
+        <div class="cpu-label">
+          <span class="cpu-name">${c.name}</span>
+          <span class="cpu-val">${pct}%</span>
+        </div>
+        <div class="cpu-track"><div class="cpu-fill ${cls}" style="width:${Math.max(pct,0.5)}%"></div></div>
+      </div>`;
+  }).join('');
+}
+
+// ── Incidents ────────────────────────────────────────────────────────────────
+async function refreshIncidents() {
+  const data = await get('/api/incidents');
+  const stats = data.stats || {};
+  document.getElementById('val-total').textContent = stats.total || 0;
+  document.getElementById('val-remediated').textContent = stats.remediated || 0;
+  document.getElementById('val-escalated').textContent = stats.escalated || 0;
+
+  const feed = document.getElementById('incident-feed');
+  if (!data.incidents?.length) {
+    feed.innerHTML = '<div class="empty-state">No incidents yet.<br>Use the simulator to trigger one.</div>';
+    return;
+  }
+
+  feed.innerHTML = data.incidents.map(inc => {
+    const status = inc.status || 'open';
+    const time = inc.created_at ? new Date(inc.created_at).toLocaleTimeString() : '—';
+    const diagnosis = inc.diagnosis ? inc.diagnosis.replace(/---TICKET---[\s\S]*/,'').trim() : null;
+    const action = inc.actions?.[0];
+    const actionText = action ? `${action.action_type} → ${action.outcome}` : null;
+
+    return `
+      <div class="incident-card ${status}" id="inc-${inc.id}">
+        <div class="inc-top">
+          <span class="inc-svc">${inc.service}</span>
+          <span class="inc-status ${status}">${status}</span>
+        </div>
+        <div class="inc-title">${inc.title}</div>
+        ${diagnosis ? `
+          <div class="inc-diagnosis" id="diag-${inc.id}">${diagnosis.substring(0,200)}${diagnosis.length>200?'...':''}</div>
+        ` : ''}
+        <div class="inc-footer">
+          <span class="inc-time">${time}${actionText ? ' · ' + actionText : ''}</span>
+          ${diagnosis ? `<button class="inc-toggle" onclick="toggleDiag(${inc.id})">AI diagnosis</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleDiag(id) {
+  const el = document.getElementById(`diag-${id}`);
+  if (el) el.classList.toggle('visible');
+}
+
+// ── Logs ─────────────────────────────────────────────────────────────────────
+async function refreshLogs() {
+  const data = await get(`/api/logs?level=${currentLevel}&limit=40`);
+  const el = document.getElementById('log-stream');
+
+  if (!data.logs?.length) {
+    el.innerHTML = `<div class="empty-state">No ${currentLevel} logs in the last hour.<br>Try triggering an incident below.</div>`;
+    return;
+  }
+
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+
+  el.innerHTML = data.logs.map(log => {
+    const time = new Date(log.timestamp).toLocaleTimeString('en-US', {hour12:false});
+    const msg = typeof log.message === 'object' ? JSON.stringify(log.message) : String(log.message || '').trim();
+    return `
+      <div class="log-line">
+        <span class="log-time">${time}</span>
+        <span class="log-svc">${log.service}</span>
+        <span class="log-lvl ${log.level}">${log.level}</span>
+        <span class="log-msg">${msg.substring(0,120)}</span>
+      </div>`;
+  }).join('');
+
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+
+function setLevel(level, btn) {
+  currentLevel = level;
+  document.querySelectorAll('.level-btn').forEach(b => b.className = 'level-btn');
+  btn.className = `level-btn active-${level.toLowerCase().replace('warning','warn')}`;
+  refreshLogs();
+}
+
+// ── Simulator ────────────────────────────────────────────────────────────────
+async function simulate(type) {
+  const btnId = type === 'self_healing' ? 'btn-healing' : 'btn-breaking';
+  const btn = document.getElementById(btnId);
+  const output = document.getElementById('sim-output');
+
+  btn.disabled = true;
+  btn.innerHTML = btn.innerHTML.replace(/^<span[^>]*>[^<]*<\/span>/, '<span class="btn-icon"><span class="spinner"></span></span>');
+
+  output.className = 'sim-output visible';
+  output.textContent = 'Triggering incident...';
+
+  try {
+    const data = await post('/api/simulate', {type});
+    output.className = 'sim-output visible success';
+    output.textContent = '✓ ' + data.message;
+
+    if (type === 'self_healing') {
+      output.textContent += '\n\nWatch the Services panel — worker-service will flip to DOWN, then back to UP within ~60s.';
+    } else {
+      output.textContent += '\n\nCheck the Incident Feed on the right — a new escalated incident will appear within ~60s.';
+    }
+  } catch(e) {
+    output.className = 'sim-output visible error';
+    output.textContent = '✗ Error: ' + e.message;
+  }
+
+  btn.disabled = false;
+  const icons = {self_healing: '⚡', non_healing: '🔥'};
+  btn.querySelector('.btn-icon').innerHTML = '';
+  btn.querySelector('.btn-icon').textContent = icons[type] || '▶';
+
+  // Re-enable after cooldown
+  setTimeout(() => { btn.disabled = false; }, 5000);
+}
+
+// ── Refresh loop ─────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.allSettled([
+    refreshServices(),
+    refreshAlerts(),
+    refreshMetrics(),
+    refreshIncidents(),
+    refreshLogs(),
+  ]);
+}
+
+refreshAll();
+setInterval(refreshAll, 10000);   // refresh every 10 seconds
+setInterval(refreshLogs, 3000);   // logs refresh every 3 seconds
+</script>
+</body>
+</html>

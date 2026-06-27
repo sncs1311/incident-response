@@ -10,7 +10,7 @@ global:
 
 # Alert rules live here — we'll add them in Phase 3
 rule_files:
-  - "alert_rules.yml"
+  - "/etc/prometheus/alert_rules.yml"
 
 scrape_configs:
   # ── Prometheus itself ─────────────────────────────────────

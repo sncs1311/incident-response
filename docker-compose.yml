@@ -88,6 +88,7 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -139,6 +140,25 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+
+  # ── Dashboard UI ─────────────────────────────────────────────────────────
+  dashboard:
+    build: ./dashboard
+    container_name: dashboard
+    networks: [monitoring]
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+      - LOKI_URL=http://loki:3100
+      - DB_PATH=/app/data/incidents.db
+    depends_on:
+      - prometheus
+      - loki
     restart: unless-stopped
 
   # ── Incident Response Agent ───────────────────────────────
